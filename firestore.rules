@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner() {
+      return request.auth != null && request.auth.uid == "REPLACE_WITH_YOUR_ADMIN_UID";
+    }
+
+    // Public visitors can read only the active version's metadata.
+    match /masterControl/{controlId} {
+      allow read: if controlId == "current";
+      allow write: if isOwner();
+    }
+
+    // Admin can manage all versions. Public users can read only the version
+    // referenced by masterControl/current. All writes require the owner UID.
+    match /masterVersions/{versionId} {
+      allow read: if isOwner() ||
+        (exists(/databases/$(database)/documents/masterControl/current) &&
+         get(/databases/$(database)/documents/masterControl/current).data.activeVersion == versionId);
+      allow write: if isOwner();
+
+      match /chunks/{chunkId} {
+        allow read: if isOwner() ||
+          (exists(/databases/$(database)/documents/masterControl/current) &&
+           get(/databases/$(database)/documents/masterControl/current).data.activeVersion == versionId);
+        allow write: if isOwner();
+      }
+    }
+
+    // Default deny: no other collection is accessible.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
